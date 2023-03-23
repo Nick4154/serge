@@ -19,7 +19,7 @@ services:
       ports:
         - "27017"
       volumes:
-        - data:/data/db
+        - /mnt/docker/serge/db:/data/db
 
   web:
     restart: on-failure
@@ -29,8 +29,8 @@ services:
     ports:
       - 9123:9123
     volumes:
-      - ./web:/usr/src/app/
-      - /usr/src/app/node_modules
+      - /mnt/docker/serge/web:/usr/src/app/
+      #- /usr/src/app/node_modules
     command: npm run dev -- --host 0.0.0.0 --port 9123
   nginx:
     build: 
@@ -38,6 +38,115 @@ services:
       dockerfile: ./Dockerfile.nginx 
     ports:
      - "${PORT}:80"
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:version: "3.9"
+services:
+  api:
+    build: 
+      context: ./api
+      dockerfile: ./Dockerfile.api
+    volumes:
+      - /mnt/docker/serge/api:/usr/src/app/
+      - /usr/src/app/weights/
+      - /etc/localtime:/etc/localtime:ro 
+    depends_on:
+      - mongodb
+    env_file:
+      - .env
+    command: uvicorn main:app --reload --host 0.0.0.0 --port 9124 --root-path /api/
+    networks:
+      - serge
+    deploy:
+      mode: replicated
+      replicas: 1
+    logging:
+      driver: loki
+      options:
+        loki-url: "https://loki.homelab.serverfuel.ca/loki/api/v1/push"
 
-volumes:
-  data:
+  mongodb:
+    image: mongo:6.0.4-jammy
+    ports:
+      - "27017"
+    volumes:
+      - /mnt/docker/serge/db:/data/db
+    networks:
+      - serge
+    deploy:
+      mode: replicated
+      replicas: 1
+    logging:
+      driver: loki
+      options:
+        loki-url: "https://loki.homelab.serverfuel.ca/loki/api/v1/push"
+
+  web:
+    restart: on-failure
+    build:
+      context: ./web
+      dockerfile: ./Dockerfile.web
+    ports:
+      - 9123:9123
+    networks:
+      - serge
+      - traefik-public
+    volumes:
+      - /mnt/docker/serge/web:/usr/src/app/
+      #- /usr/src/app/node_modules
+    command: npm run dev -- --host 0.0.0.0 --port 9123
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+      # Frontend
+      - "traefik.enable=true"
+      - "traefik.http.routers.serge.rule=Host(`serge.homelab.serverfuel.ca`)"
+      - "traefik.http.routers.serge.entrypoints=https"
+      - "traefik.http.services.serge.loadbalancer.server.port=9123"
+      - "traefik.http.routers.serge.service=serge"
+      - "traefik.http.routers.serge.tls=true"
+      - "traefik.docker.network=traefik-public"
+    logging:
+      driver: loki
+      options:
+        loki-url: "https://loki.homelab.serverfuel.ca/loki/api/v1/push"
+
+  nginx:
+    build: 
+      context: ./nginx
+      dockerfile: ./Dockerfile.nginx 
+    networks:
+    - serge
+    ports:
+     - "${PORT}:80"
+    deploy:
+      mode: replicated
+      replicas: 1
+    logging:
+      driver: loki
+      options:
+        loki-url: "https://loki.homelab.serverfuel.ca/loki/api/v1/push"
+
+networks:
+  traefik-public:
+    external: true
+  serge:
+
+      # Frontend
+      - "traefik.enable=true"
+      - "traefik.http.routers.heimdall.rule=Host(`heimdall.homelab.serverfuel.ca`)"
+      - "traefik.http.routers.heimdall.entrypoints=https"
+      - "traefik.http.services.heimdall.loadbalancer.server.port=80"
+      - "traefik.http.routers.heimdall.service=heimdall"
+      - "traefik.http.routers.heimdall.tls=true"
+      - "traefik.docker.network=traefik-public"
+    logging:
+      driver: loki
+      options:
+        loki-url: "https://loki.homelab.serverfuel.ca/loki/api/v1/push"
+
+networks:
+  traefik-public:
+    external: true
