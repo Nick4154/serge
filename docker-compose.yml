@@ -5,49 +5,6 @@ services:
       context: ./api
       dockerfile: ./Dockerfile.api
     volumes:
-      - ./api:/usr/src/app/
-      - /usr/src/app/weights/
-      - /etc/localtime:/etc/localtime:ro 
-    depends_on:
-      - mongodb
-    env_file:
-      - .env
-    command: uvicorn main:app --reload --host 0.0.0.0 --port 9124 --root-path /api/
-
-  mongodb:
-      image: mongo:6.0.4-jammy
-      ports:
-        - "27017"
-      volumes:
-        - /mnt/docker/serge/db:/data/db
-
-  web:
-    restart: on-failure
-    build:
-      context: ./web
-      dockerfile: ./Dockerfile.web
-    ports:
-      - 9123:9123
-    volumes:
-      - /mnt/docker/serge/web:/usr/src/app/
-      #- /usr/src/app/node_modules
-    command: npm run dev -- --host 0.0.0.0 --port 9123
-  nginx:
-    build: 
-      context: ./nginx
-      dockerfile: ./Dockerfile.nginx 
-    ports:
-     - "${PORT}:80"
-    deploy:
-      mode: replicated
-      replicas: 1
-      labels:version: "3.9"
-services:
-  api:
-    build: 
-      context: ./api
-      dockerfile: ./Dockerfile.api
-    volumes:
       - /mnt/docker/serge/api:/usr/src/app/
       - /usr/src/app/weights/
       - /etc/localtime:/etc/localtime:ro 
@@ -133,20 +90,3 @@ networks:
   traefik-public:
     external: true
   serge:
-
-      # Frontend
-      - "traefik.enable=true"
-      - "traefik.http.routers.heimdall.rule=Host(`heimdall.homelab.serverfuel.ca`)"
-      - "traefik.http.routers.heimdall.entrypoints=https"
-      - "traefik.http.services.heimdall.loadbalancer.server.port=80"
-      - "traefik.http.routers.heimdall.service=heimdall"
-      - "traefik.http.routers.heimdall.tls=true"
-      - "traefik.docker.network=traefik-public"
-    logging:
-      driver: loki
-      options:
-        loki-url: "https://loki.homelab.serverfuel.ca/loki/api/v1/push"
-
-networks:
-  traefik-public:
-    external: true
